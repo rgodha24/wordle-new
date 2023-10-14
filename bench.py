@@ -4,7 +4,6 @@ import subprocess
 from os import path
 from typing import List
 
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 BINARY = path.abspath("./target/release/wordle")

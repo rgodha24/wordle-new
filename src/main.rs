@@ -1,7 +1,6 @@
 mod response;
 
 use clap::Parser;
-use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use rayon::prelude::*;
 use response::{Response, ResponseType};
@@ -10,6 +9,9 @@ use std::{
     fmt::Display,
     ops::{Deref, Index},
 };
+
+const GREEN_WEIGHT: usize = 100;
+const YELLOW_WEIGHT: usize = 1;
 
 #[derive(Parser)]
 #[command(version)]
@@ -26,13 +28,14 @@ fn main() {
     let (mut answers, mut ok) = read_jsons();
 
     // not 0 index...
-    for run in 1..=6 {
+    for run in 1.. {
         let best_chars = best_chars(&answers);
+        let greens = board.greens();
 
         let best_choice = using_hashset(&ok, &answers)
-            .par_iter()
+            .iter()
             .map(|w| (w, w.score(&best_chars)))
-            .min_by_key(|x| x.1)
+            .max_by_key(|x| x.1)
             .expect("best word exists")
             .0;
 
@@ -42,7 +45,7 @@ fn main() {
 
         if response.is_correct() {
             // println!("Found the word in {run} runs!");
-            std::process::exit(0);
+            break;
         }
 
         board.use_responses(response, best_choice);
@@ -50,8 +53,6 @@ fn main() {
         answers.retain(|w| board.word_is_ok(w.clone()));
         ok.retain(|w| board.word_is_ok(w.clone()));
     }
-
-    println!("Couldn't find the word in 6 runs :(");
 }
 
 fn best_chars(answers: &HashSet<Word>) -> [Vec<char>; 5] {
@@ -91,7 +92,6 @@ fn read_jsons() -> (HashSet<Word>, HashSet<Word>) {
 }
 
 fn using_hashset<'a>(ok: &'a HashSet<Word>, answers: &'a HashSet<Word>) -> &'a HashSet<Word> {
-    // println!("ok: {}, answerinput: {}", ok.len(), answers.len());
     if answers.len() > 5 {
         ok
     } else {
@@ -117,13 +117,30 @@ impl Word {
     fn score(&self, best_chars: &[Vec<char>; 5]) -> usize {
         let mut score = 0;
         for (i, chars) in best_chars.iter().enumerate() {
-            let i = chars
+            let green_weight = chars
                 .iter()
+                .rev()
                 .find_position(|x| **x == self.0[i])
                 .map(|x| x.0)
-                .unwrap_or(26);
+                .unwrap_or(0)
+                * GREEN_WEIGHT;
 
-            score += i;
+            score += green_weight;
+
+            let yellow_weight = best_chars.iter().enumerate().fold(0, |acc, (j, chars)| {
+                if i == j {
+                    acc
+                } else {
+                    acc + chars
+                        .iter()
+                        .rev()
+                        .find_position(|x| **x == self.0[i])
+                        .map(|x| x.0)
+                        .unwrap_or(0)
+                }
+            }) * YELLOW_WEIGHT;
+
+            score += yellow_weight;
         }
         score
     }
@@ -138,6 +155,19 @@ impl Board {
         }
 
         self.must_have.is_subset(&word.0.iter().copied().collect())
+    }
+
+    fn greens(&self) -> Vec<char> {
+        self.letters
+            .iter()
+            .filter_map(|l| {
+                if l.is.len() == 1 {
+                    Some(*l.is.iter().next().unwrap())
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     fn use_responses(&mut self, responses: Response, word: &Word) {
