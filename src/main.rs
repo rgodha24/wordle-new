@@ -5,6 +5,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
     io::{BufRead, Write},
+    ops::{Deref, Index},
 };
 
 fn main() {
@@ -51,14 +52,14 @@ fn main() {
 
         println!("{}", best_choice);
 
-        let responses = best_choice.get_responses();
+        let response = Response::input(best_choice);
 
-        if responses.iter().all(|r| *r == Response::Green) {
+        if response.is_correct() {
             println!("Found the word in {run} runs!");
             break;
         }
 
-        board.use_responses(responses, best_choice);
+        board.use_responses(response, best_choice);
 
         answers.retain(|w| board.word_is_ok(w.clone()));
         ok.retain(|w| board.word_is_ok(w.clone()));
@@ -74,30 +75,11 @@ fn using_hashset<'a>(ok: &'a HashSet<Word>, answers: &'a HashSet<Word>) -> &'a H
     }
 }
 
-fn prompt_response(c: char) -> Response {
-    print!("Is {c} grey(1), yellow(2), or green(3)?: ");
-    std::io::stdout().flush().unwrap();
-
-    let mut line = String::new();
-    std::io::stdin().lock().read_line(&mut line).unwrap();
-
-    match line.trim().parse::<usize>() {
-        Ok(1) => Response::Grey,
-        Ok(2) => Response::Yellow,
-        Ok(3) => Response::Green,
-        Ok(n) => {
-            println!("1, 2, or 3 only. You entered {}", n);
-            prompt_response(c)
-        }
-        Err(e) => {
-            println!("1, 2, or 3 only. You entered {}", e);
-            prompt_response(c)
-        }
-    }
-}
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+struct Response([ResponseType; 5]);
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-enum Response {
+enum ResponseType {
     Grey,
     Yellow,
     Green,
@@ -117,6 +99,60 @@ struct Letter {
     is: HashSet<char>,
 }
 
+impl Response {
+    fn is_correct(&self) -> bool {
+        self.0.iter().all(|r| *r == ResponseType::Green)
+    }
+
+    fn prompt(word: &Word) -> Self {
+        let mut r = [ResponseType::Grey; 5];
+        for (i, c) in word.iter().enumerate() {
+            r[i] = Self::prompt_single(c);
+        }
+
+        Self(r)
+    }
+
+    fn input(_: &Word) -> Self {
+        let mut line = String::new();
+        std::io::stdin().lock().read_line(&mut line).unwrap();
+
+        let mut r = [ResponseType::Grey; 5];
+        for (i, c) in line.trim().chars().enumerate() {
+            r[i] = match c {
+                'G' => ResponseType::Green,
+                'y' => ResponseType::Yellow,
+                'g' => ResponseType::Grey,
+                _ => panic!("invalid input"),
+            }
+        }
+
+        Self(r)
+    }
+
+    fn prompt_single(c: &char) -> ResponseType {
+        print!("Is {c} grey(1), yellow(2), or green(3)?: ");
+        std::io::stdout().flush().unwrap();
+
+        let mut line = String::new();
+        std::io::stdin().lock().read_line(&mut line).unwrap();
+
+        match line.trim().parse::<usize>() {
+            Ok(1) => ResponseType::Grey,
+            Ok(2) => ResponseType::Yellow,
+            Ok(3) => ResponseType::Green,
+            Ok(n) => {
+                println!("1, 2, or 3 only. You entered {}", n);
+                Self::prompt_single(c)
+            }
+            Err(e) => {
+                println!("1, 2, or 3 only. You entered {}", e);
+                Self::prompt_single(c)
+            }
+        }
+    }
+}
+
 impl Word {
     fn score(&self, best_chars: &[Vec<char>; 5]) -> usize {
         let mut score = 0;
@@ -131,14 +167,6 @@ impl Word {
         }
         score
     }
-
-    fn get_responses(&self) -> [Response; 5] {
-        let mut responses = [Response::Grey; 5];
-        for (i, c) in self.0.iter().enumerate() {
-            responses[i] = prompt_response(*c);
-        }
-        responses
-    }
 }
 
 impl Board {
@@ -152,27 +180,21 @@ impl Board {
         self.must_have.is_subset(&word.0.iter().copied().collect())
     }
 
-    fn use_responses(&mut self, responses: [Response; 5], word: &Word) {
+    fn use_responses(&mut self, responses: Response, word: &Word) {
         for (i, r) in responses.iter().enumerate() {
             match r {
-                Response::Grey => {
-                    self.letters[i].remove_choice(word.0[i]);
+                ResponseType::Grey => {
+                    self.letters[i].remove_choice(word[i]);
                 }
-                Response::Yellow => {
-                    self.letters[i].remove_choice(word.0[i]);
-                    self.must_have.insert(word.0[i]);
+                ResponseType::Yellow => {
+                    self.letters[i].remove_choice(word[i]);
+                    self.must_have.insert(word[i]);
                 }
-                Response::Green => {
-                    self.letters[i].set_choice(word.0[i]);
+                ResponseType::Green => {
+                    self.letters[i].set_choice(word[i]);
                 }
             }
         }
-    }
-
-    fn remove_from_all(&mut self, c: char) {
-        self.letters.iter_mut().for_each(|l| {
-            l.remove_choice(c);
-        });
     }
 }
 
@@ -182,6 +204,38 @@ impl Letter {
     }
     fn set_choice(&mut self, c: char) {
         self.is = [c].into_iter().collect();
+    }
+}
+
+impl Index<usize> for Word {
+    type Output = char;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl Deref for Word {
+    type Target = [char; 5];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Index<usize> for Response {
+    type Output = ResponseType;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl Deref for Response {
+    type Target = [ResponseType; 5];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
