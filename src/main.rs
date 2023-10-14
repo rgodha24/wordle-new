@@ -1,50 +1,36 @@
+mod response;
+
+use clap::Parser;
 use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use rayon::prelude::*;
+use response::{Response, ResponseType};
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
-    io::{BufRead, Write},
     ops::{Deref, Index},
 };
 
-fn main() {
-    let ok = include_str!("../ok.json");
-    let answers = include_str!("../answers.json");
-    let ok: HashSet<&str> = serde_json::from_str(&ok).unwrap();
-    let answers: HashSet<&str> = serde_json::from_str(&answers).unwrap();
+#[derive(Parser)]
+#[command(version)]
+struct Args {
+    #[arg(short, long)]
+    answer: Option<String>,
+}
 
-    let mut answers: HashSet<Word> = answers.into_iter().map(|w| w.into()).collect();
-    let mut ok: HashSet<Word> = ok.into_iter().map(|w| w.into()).collect();
+fn main() {
+    let args = Args::parse();
+    let answer: Option<Word> = args.answer.map(|s| s.as_str().into());
     let mut board = Board::default();
+
+    let (mut answers, mut ok) = read_jsons();
 
     // not 0 index...
     for run in 1..=6 {
-        let mut answer_letters: [HashMap<char, usize>; 5] = Default::default();
-
-        for answer in answers.iter() {
-            for (i, c) in answer.0.iter().enumerate() {
-                *answer_letters[i].entry(*c).or_default() += 1;
-            }
-        }
-
-        let best_chars: [Vec<char>; 5] = answer_letters
-            .iter()
-            .map(|letters| {
-                letters
-                    .iter()
-                    .sorted_by_key(|(_, count)| *count)
-                    .map(|(c, _)| *c)
-                    .rev()
-                    .collect_vec()
-            })
-            .collect_vec()
-            .try_into()
-            .unwrap();
+        let best_chars = best_chars(&answers);
 
         let best_choice = using_hashset(&ok, &answers)
             .par_iter()
-            .progress_count(ok.len() as u64)
             .map(|w| (w, w.score(&best_chars)))
             .min_by_key(|x| x.1)
             .expect("best word exists")
@@ -52,11 +38,11 @@ fn main() {
 
         println!("{}", best_choice);
 
-        let response = Response::input(best_choice);
+        let response = Response::prompt_or_answer(best_choice, answer.as_ref());
 
         if response.is_correct() {
-            println!("Found the word in {run} runs!");
-            break;
+            // println!("Found the word in {run} runs!");
+            std::process::exit(0);
         }
 
         board.use_responses(response, best_choice);
@@ -64,25 +50,53 @@ fn main() {
         answers.retain(|w| board.word_is_ok(w.clone()));
         ok.retain(|w| board.word_is_ok(w.clone()));
     }
+
+    println!("Couldn't find the word in 6 runs :(");
+}
+
+fn best_chars(answers: &HashSet<Word>) -> [Vec<char>; 5] {
+    let mut answer_letters: [HashMap<char, usize>; 5] = Default::default();
+
+    for answer in answers.iter() {
+        for (i, c) in answer.0.iter().enumerate() {
+            *answer_letters[i].entry(*c).or_default() += 1;
+        }
+    }
+
+    answer_letters
+        .iter()
+        .map(|letters| {
+            letters
+                .iter()
+                .sorted_by_key(|(_, count)| *count)
+                .map(|(c, _)| *c)
+                .rev()
+                .collect_vec()
+        })
+        .collect_vec()
+        .try_into()
+        .unwrap()
+}
+
+fn read_jsons() -> (HashSet<Word>, HashSet<Word>) {
+    let ok = include_str!("../ok.json");
+    let answers = include_str!("../answers.json");
+    let ok: HashSet<&str> = serde_json::from_str(&ok).unwrap();
+    let answers: HashSet<&str> = serde_json::from_str(&answers).unwrap();
+
+    let answers: HashSet<Word> = answers.into_iter().map(|w| w.into()).collect();
+    let ok: HashSet<Word> = ok.into_iter().map(|w| w.into()).collect();
+
+    (answers, ok)
 }
 
 fn using_hashset<'a>(ok: &'a HashSet<Word>, answers: &'a HashSet<Word>) -> &'a HashSet<Word> {
-    println!("ok: {}, answers: {}", ok.len(), answers.len());
+    // println!("ok: {}, answerinput: {}", ok.len(), answers.len());
     if answers.len() > 5 {
         ok
     } else {
         answers
     }
-}
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-struct Response([ResponseType; 5]);
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-enum ResponseType {
-    Grey,
-    Yellow,
-    Green,
 }
 
 #[derive(Debug, Clone)]
@@ -92,65 +106,11 @@ struct Board {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-struct Word([char; 5]);
+pub struct Word([char; 5]);
 
 #[derive(Debug, Clone)]
 struct Letter {
     is: HashSet<char>,
-}
-
-impl Response {
-    fn is_correct(&self) -> bool {
-        self.0.iter().all(|r| *r == ResponseType::Green)
-    }
-
-    fn prompt(word: &Word) -> Self {
-        let mut r = [ResponseType::Grey; 5];
-        for (i, c) in word.iter().enumerate() {
-            r[i] = Self::prompt_single(c);
-        }
-
-        Self(r)
-    }
-
-    fn input(_: &Word) -> Self {
-        let mut line = String::new();
-        std::io::stdin().lock().read_line(&mut line).unwrap();
-
-        let mut r = [ResponseType::Grey; 5];
-        for (i, c) in line.trim().chars().enumerate() {
-            r[i] = match c {
-                'G' => ResponseType::Green,
-                'y' => ResponseType::Yellow,
-                'g' => ResponseType::Grey,
-                _ => panic!("invalid input"),
-            }
-        }
-
-        Self(r)
-    }
-
-    fn prompt_single(c: &char) -> ResponseType {
-        print!("Is {c} grey(1), yellow(2), or green(3)?: ");
-        std::io::stdout().flush().unwrap();
-
-        let mut line = String::new();
-        std::io::stdin().lock().read_line(&mut line).unwrap();
-
-        match line.trim().parse::<usize>() {
-            Ok(1) => ResponseType::Grey,
-            Ok(2) => ResponseType::Yellow,
-            Ok(3) => ResponseType::Green,
-            Ok(n) => {
-                println!("1, 2, or 3 only. You entered {}", n);
-                Self::prompt_single(c)
-            }
-            Err(e) => {
-                println!("1, 2, or 3 only. You entered {}", e);
-                Self::prompt_single(c)
-            }
-        }
-    }
 }
 
 impl Word {
@@ -223,22 +183,6 @@ impl Deref for Word {
     }
 }
 
-impl Index<usize> for Response {
-    type Output = ResponseType;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
-    }
-}
-
-impl Deref for Response {
-    type Target = [ResponseType; 5];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 impl Display for Word {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for c in self.0.iter() {
@@ -259,6 +203,10 @@ impl Default for Board {
 
 impl From<&str> for Word {
     fn from(value: &str) -> Self {
+        if value.len() != 5 {
+            panic!("Word {value} isn't 5 characters long");
+        }
+
         let mut chars = [' '; 5];
         for (i, c) in value.chars().enumerate() {
             chars[i] = c;
