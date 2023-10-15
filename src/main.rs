@@ -1,14 +1,16 @@
 mod response;
+mod word;
 
 use clap::Parser;
+use indicatif::ParallelProgressIterator;
 use itertools::Itertools;
 use rayon::prelude::*;
 use response::{Response, ResponseType};
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
-    ops::{Deref, Index},
 };
+use word::{Letter, Word};
 
 const GREEN_WEIGHT: usize = 100;
 const YELLOW_WEIGHT: usize = 1;
@@ -29,26 +31,31 @@ fn main() {
 
     // not 0 index...
     for run in 1.. {
-        let best_chars = best_chars(&answers);
-        let greens = board.greens();
+        // let best_chars = best_chars(&answers);
+        // let greens = board.greens();
 
-        let best_choice = using_hashset(&ok, &answers)
-            .iter()
-            .map(|w| (w, w.score(&best_chars)))
-            .max_by_key(|x| x.1)
-            .expect("best word exists")
-            .0;
+        let best_choice = if run == 1 {
+            "roate".into()
+        } else {
+            ok.par_iter()
+                .progress_count(ok.len() as u64)
+                .map(|w| (w, w.score_new(&answers)))
+                .min_by_key(|x| x.1)
+                .expect("best word exists")
+                .0
+                .clone()
+        };
 
         println!("{}", best_choice);
 
-        let response = Response::prompt_or_answer(best_choice, answer.as_ref());
+        let response = Response::prompt_or_answer(&best_choice, answer.as_ref());
 
         if response.is_correct() {
             // println!("Found the word in {run} runs!");
             break;
         }
 
-        board.use_responses(response, best_choice);
+        board.use_responses(response, &best_choice);
 
         answers.retain(|w| board.word_is_ok(w.clone()));
         ok.retain(|w| board.word_is_ok(w.clone()));
@@ -59,7 +66,7 @@ fn best_chars(answers: &HashSet<Word>) -> [Vec<char>; 5] {
     let mut answer_letters: [HashMap<char, usize>; 5] = Default::default();
 
     for answer in answers.iter() {
-        for (i, c) in answer.0.iter().enumerate() {
+        for (i, c) in answer.iter().enumerate() {
             *answer_letters[i].entry(*c).or_default() += 1;
         }
     }
@@ -86,7 +93,9 @@ fn read_jsons() -> (HashSet<Word>, HashSet<Word>) {
     let answers: HashSet<&str> = serde_json::from_str(&answers).unwrap();
 
     let answers: HashSet<Word> = answers.into_iter().map(|w| w.into()).collect();
-    let ok: HashSet<Word> = ok.into_iter().map(|w| w.into()).collect();
+    let mut ok: HashSet<Word> = ok.into_iter().map(|w| w.into()).collect();
+
+    ok.extend(answers.iter().cloned());
 
     (answers, ok)
 }
@@ -105,64 +114,23 @@ struct Board {
     must_have: HashSet<char>,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct Word([char; 5]);
-
-#[derive(Debug, Clone)]
-struct Letter {
-    is: HashSet<char>,
-}
-
-impl Word {
-    fn score(&self, best_chars: &[Vec<char>; 5]) -> usize {
-        let mut score = 0;
-        for (i, chars) in best_chars.iter().enumerate() {
-            let green_weight = chars
-                .iter()
-                .rev()
-                .find_position(|x| **x == self.0[i])
-                .map(|x| x.0)
-                .unwrap_or(0)
-                * GREEN_WEIGHT;
-
-            score += green_weight;
-
-            let yellow_weight = best_chars.iter().enumerate().fold(0, |acc, (j, chars)| {
-                if i == j {
-                    acc
-                } else {
-                    acc + chars
-                        .iter()
-                        .rev()
-                        .find_position(|x| **x == self.0[i])
-                        .map(|x| x.0)
-                        .unwrap_or(0)
-                }
-            }) * YELLOW_WEIGHT;
-
-            score += yellow_weight;
-        }
-        score
-    }
-}
-
 impl Board {
     fn word_is_ok(&self, word: Word) -> bool {
-        for (i, c) in word.0.iter().enumerate() {
-            if !self.letters[i].is.contains(c) {
+        for (i, c) in word.iter().enumerate() {
+            if !self.letters[i].contains(c) {
                 return false;
             }
         }
 
-        self.must_have.is_subset(&word.0.iter().copied().collect())
+        self.must_have.is_subset(&word.iter().copied().collect())
     }
 
     fn greens(&self) -> Vec<char> {
         self.letters
             .iter()
             .filter_map(|l| {
-                if l.is.len() == 1 {
-                    Some(*l.is.iter().next().unwrap())
+                if l.len() == 1 {
+                    Some(*l.iter().next().unwrap())
                 } else {
                     None
                 }
@@ -188,77 +156,12 @@ impl Board {
     }
 }
 
-impl Letter {
-    fn remove_choice(&mut self, c: char) -> bool {
-        self.is.remove(&c)
-    }
-    fn set_choice(&mut self, c: char) {
-        self.is = [c].into_iter().collect();
-    }
-}
-
-impl Index<usize> for Word {
-    type Output = char;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
-    }
-}
-
-impl Deref for Word {
-    type Target = [char; 5];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Display for Word {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for c in self.0.iter() {
-            write!(f, "{}", c)?;
-        }
-        Ok(())
-    }
-}
-
 impl Default for Board {
     fn default() -> Self {
         Self {
             letters: Default::default(),
             must_have: Default::default(),
         }
-    }
-}
-
-impl From<&str> for Word {
-    fn from(value: &str) -> Self {
-        if value.len() != 5 {
-            panic!("Word {value} isn't 5 characters long");
-        }
-
-        let mut chars = [' '; 5];
-        for (i, c) in value.chars().enumerate() {
-            chars[i] = c;
-        }
-        Self(chars)
-    }
-}
-
-impl Default for Letter {
-    fn default() -> Self {
-        Self {
-            is: ('a'..='z').collect(),
-        }
-    }
-}
-impl Display for Letter {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut s = String::new();
-        for c in self.is.iter() {
-            s.push(*c);
-        }
-        write!(f, "{}", s)
     }
 }
 

@@ -29,23 +29,6 @@ impl Response {
         Self(r)
     }
 
-    // pub fn input(_: &Word) -> Self {
-    //     let mut line = String::new();
-    //     std::io::stdin().lock().read_line(&mut line).unwrap();
-    //
-    //     let mut r = [ResponseType::Grey; 5];
-    //     for (i, c) in line.trim().chars().enumerate() {
-    //         r[i] = match c {
-    //             'G' => ResponseType::Green,
-    //             'y' => ResponseType::Yellow,
-    //             'g' => ResponseType::Grey,
-    //             _ => panic!("invalid input"),
-    //         }
-    //     }
-    //
-    //     Self(r)
-    // }
-
     pub fn prompt_or_answer(guess: &Word, correct: Option<&Word>) -> Self {
         if let Some(correct) = correct {
             Self::from_answer(guess, correct)
@@ -54,7 +37,7 @@ impl Response {
         }
     }
 
-    fn from_answer(guess: &Word, correct: &Word) -> Self {
+    pub fn from_answer(guess: &Word, correct: &Word) -> Self {
         let mut r = [ResponseType::Grey; 5];
         for (i, c) in guess.iter().enumerate() {
             if correct[i] == *c {
