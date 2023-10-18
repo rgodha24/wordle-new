@@ -67,8 +67,8 @@ fn test_answer(
 }
 
 impl Word {
-    /// higher is worse
-    pub fn score_new(&self, answers: &HashSet<Word>) -> usize {
+    /// lower is better
+    pub fn score_new(&self, answers: &HashSet<Word>, run_number: &usize) -> usize {
         let mut score = 0;
         for answer in answers {
             let response = Response::from_answer(self, answer);
@@ -78,37 +78,10 @@ impl Word {
                 .count();
         }
 
-        score
-    }
-
-    pub fn score(&self, best_chars: &[Vec<char>; 5]) -> usize {
-        let mut score = 0;
-        for (i, chars) in best_chars.iter().enumerate() {
-            let green_weight = chars
-                .iter()
-                .rev()
-                .find_position(|x| **x == self.0[i])
-                .map(|x| x.0)
-                .unwrap_or(0)
-                * GREEN_WEIGHT;
-
-            score += green_weight;
-
-            let yellow_weight = best_chars.iter().enumerate().fold(0, |acc, (j, chars)| {
-                if i == j {
-                    acc
-                } else {
-                    acc + chars
-                        .iter()
-                        .rev()
-                        .find_position(|x| **x == self.0[i])
-                        .map(|x| x.0)
-                        .unwrap_or(0)
-                }
-            }) * YELLOW_WEIGHT;
-
-            score += yellow_weight;
+        if answers.contains(self) {
+            score -= *run_number;
         }
+
         score
     }
 }

@@ -2,6 +2,7 @@ import json
 import random
 import subprocess
 from os import path
+from sys import argv
 from typing import List
 
 from tqdm import tqdm
@@ -35,11 +36,19 @@ def main():
 
     random.shuffle(answers)
 
-    amount = int(input("How many words should we test? (max 2315):  "))
+    # get answer out of argv
+    try:
+        amount = int(argv[1])
+    except:
+        print("no amount passed in, defaulting to 100")
+        amount = 100
 
     results = []
-    for i in tqdm(answers[:amount]):
+    pbar = tqdm(total = amount)
+    for i in answers[:amount]:
+        pbar.write(f"running {i}")
         results.append(run_subprocess(i))
+        pbar.update(1)
 
     print("average:", sum(results) / len(results))
 

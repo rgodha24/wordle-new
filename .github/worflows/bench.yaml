@@ -1,0 +1,37 @@
+name: Run Benchmarks
+
+on: [push, pull_request]
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.x
+
+      - name: Install pipenv
+        run: |
+          python -m pip install --upgrade pip
+          pip install pipenv
+
+      - name: Install dependencies
+        run: |
+          pipenv install --dev
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Build Rust code
+        run: cargo build --release
+
+      - name: Run benchmarks
+        run: pipenv run python bench.py 100

@@ -30,16 +30,17 @@ fn main() {
     let (mut answers, mut ok) = read_jsons();
 
     // not 0 index...
-    for run in 1.. {
+    for run in 1..10 {
         // let best_chars = best_chars(&answers);
         // let greens = board.greens();
 
         let best_choice = if run == 1 {
-            "roate".into()
+            "crane".into()
         } else {
-            ok.par_iter()
+            (if answers.len() > 2 { &ok } else { &answers })
+                .par_iter()
                 .progress_count(ok.len() as u64)
-                .map(|w| (w, w.score_new(&answers)))
+                .map(|w| (w, w.score_new(&answers, &run)))
                 .min_by_key(|x| x.1)
                 .expect("best word exists")
                 .0
@@ -58,32 +59,10 @@ fn main() {
         board.use_responses(response, &best_choice);
 
         answers.retain(|w| board.word_is_ok(w.clone()));
-        ok.retain(|w| board.word_is_ok(w.clone()));
-    }
-}
-
-fn best_chars(answers: &HashSet<Word>) -> [Vec<char>; 5] {
-    let mut answer_letters: [HashMap<char, usize>; 5] = Default::default();
-
-    for answer in answers.iter() {
-        for (i, c) in answer.iter().enumerate() {
-            *answer_letters[i].entry(*c).or_default() += 1;
-        }
+        // ok.retain(|w| board.word_is_ok(w.clone()));
     }
 
-    answer_letters
-        .iter()
-        .map(|letters| {
-            letters
-                .iter()
-                .sorted_by_key(|(_, count)| *count)
-                .map(|(c, _)| *c)
-                .rev()
-                .collect_vec()
-        })
-        .collect_vec()
-        .try_into()
-        .unwrap()
+    panic!("damn i suck at coding");
 }
 
 fn read_jsons() -> (HashSet<Word>, HashSet<Word>) {
@@ -98,14 +77,6 @@ fn read_jsons() -> (HashSet<Word>, HashSet<Word>) {
     ok.extend(answers.iter().cloned());
 
     (answers, ok)
-}
-
-fn using_hashset<'a>(ok: &'a HashSet<Word>, answers: &'a HashSet<Word>) -> &'a HashSet<Word> {
-    if answers.len() > 5 {
-        ok
-    } else {
-        answers
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -125,18 +96,18 @@ impl Board {
         self.must_have.is_subset(&word.iter().copied().collect())
     }
 
-    fn greens(&self) -> Vec<char> {
-        self.letters
-            .iter()
-            .filter_map(|l| {
-                if l.len() == 1 {
-                    Some(*l.iter().next().unwrap())
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
+    // fn greens(&self) -> Vec<char> {
+    //     self.letters
+    //         .iter()
+    //         .filter_map(|l| {
+    //             if l.len() == 1 {
+    //                 Some(*l.iter().next().unwrap())
+    //             } else {
+    //                 None
+    //             }
+    //         })
+    //         .collect()
+    // }
 
     fn use_responses(&mut self, responses: Response, word: &Word) {
         for (i, r) in responses.iter().enumerate() {
