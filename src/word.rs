@@ -1,19 +1,15 @@
-use crate::{
-    response::{self, Response, ResponseType},
-    GREEN_WEIGHT, YELLOW_WEIGHT,
-};
-use itertools::Itertools;
+use crate::response::{Response, ResponseType};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     fmt::Display,
     ops::{Deref, Index},
 };
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct Word([char; 5]);
+pub struct Word([u8; 5]);
 #[derive(Debug, Clone)]
 pub struct Letter {
-    is: HashSet<char>,
+    is: HashSet<u8>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -87,16 +83,16 @@ impl Word {
 }
 
 impl Letter {
-    pub fn remove_choice(&mut self, c: char) -> bool {
+    pub fn remove_choice(&mut self, c: u8) -> bool {
         self.is.remove(&c)
     }
-    pub fn set_choice(&mut self, c: char) {
+    pub fn set_choice(&mut self, c: u8) {
         self.is = [c].into_iter().collect();
     }
 }
 
 impl Index<usize> for Word {
-    type Output = char;
+    type Output = u8;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.0[index]
@@ -104,7 +100,7 @@ impl Index<usize> for Word {
 }
 
 impl Deref for Word {
-    type Target = [char; 5];
+    type Target = [u8; 5];
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -112,7 +108,7 @@ impl Deref for Word {
 }
 
 impl Deref for Letter {
-    type Target = HashSet<char>;
+    type Target = HashSet<u8>;
 
     fn deref(&self) -> &Self::Target {
         &self.is
@@ -121,8 +117,8 @@ impl Deref for Letter {
 
 impl Display for Word {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for c in self.0.iter() {
-            write!(f, "{}", c)?;
+        for &c in self.0.iter() {
+            write!(f, "{}", char::from(c))?;
         }
         Ok(())
     }
@@ -134,8 +130,8 @@ impl From<&str> for Word {
             panic!("Word {value} isn't 5 characters long");
         }
 
-        let mut chars = [' '; 5];
-        for (i, c) in value.chars().enumerate() {
+        let mut chars = [b' '; 5];
+        for (i, c) in value.bytes().enumerate() {
             chars[i] = c;
         }
         Self(chars)
@@ -145,15 +141,16 @@ impl From<&str> for Word {
 impl Default for Letter {
     fn default() -> Self {
         Self {
-            is: ('a'..='z').collect(),
+            is: (b'a'..=b'z').collect(),
         }
     }
 }
 impl Display for Letter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = String::new();
-        for c in self.is.iter() {
-            s.push(*c);
+        for &c in self.is.iter() {
+            let c: char = c.into();
+            s.push(c);
         }
         write!(f, "{}", s)
     }

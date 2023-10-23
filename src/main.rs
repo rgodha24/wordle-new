@@ -2,18 +2,11 @@ mod response;
 mod word;
 
 use clap::Parser;
-use indicatif::ParallelProgressIterator;
-use itertools::Itertools;
+use indicatif::{ParallelProgressIterator, ProgressIterator};
 use rayon::prelude::*;
 use response::{Response, ResponseType};
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Display,
-};
+use std::{collections::HashSet, fmt::Display, process};
 use word::{Letter, Word};
-
-const GREEN_WEIGHT: usize = 100;
-const YELLOW_WEIGHT: usize = 1;
 
 #[derive(Parser)]
 #[command(version)]
@@ -42,7 +35,7 @@ fn main() {
                 .progress_count(ok.len() as u64)
                 .map(|w| (w, w.score_new(&answers, &run)))
                 .min_by_key(|x| x.1)
-                .expect("best word exists")
+                .expect("no words left")
                 .0
                 .clone()
         };
@@ -52,14 +45,14 @@ fn main() {
         let response = Response::prompt_or_answer(&best_choice, answer.as_ref());
 
         if response.is_correct() {
-            // println!("Found the word in {run} runs!");
-            break;
+            eprintln!("Found the word in {run} runs!");
+            process::exit(0);
         }
 
         board.use_responses(response, &best_choice);
 
         answers.retain(|w| board.word_is_ok(w.clone()));
-        // ok.retain(|w| board.word_is_ok(w.clone()));
+        ok.retain(|w| board.word_is_ok(w.clone()));
     }
 
     panic!("damn i suck at coding");
@@ -82,7 +75,7 @@ fn read_jsons() -> (HashSet<Word>, HashSet<Word>) {
 #[derive(Debug, Clone)]
 struct Board {
     letters: [Letter; 5],
-    must_have: HashSet<char>,
+    must_have: HashSet<u8>,
 }
 
 impl Board {
@@ -95,19 +88,6 @@ impl Board {
 
         self.must_have.is_subset(&word.iter().copied().collect())
     }
-
-    // fn greens(&self) -> Vec<char> {
-    //     self.letters
-    //         .iter()
-    //         .filter_map(|l| {
-    //             if l.len() == 1 {
-    //                 Some(*l.iter().next().unwrap())
-    //             } else {
-    //                 None
-    //             }
-    //         })
-    //         .collect()
-    // }
 
     fn use_responses(&mut self, responses: Response, word: &Word) {
         for (i, r) in responses.iter().enumerate() {

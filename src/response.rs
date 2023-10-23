@@ -50,8 +50,8 @@ impl Response {
         Self(r)
     }
 
-    fn prompt_single(c: &char) -> ResponseType {
-        print!("Is {c} grey(1), yellow(2), or green(3)?: ");
+    fn prompt_single(c: &u8) -> ResponseType {
+        print!("Is {} grey(1), yellow(2), or green(3)?: ", char::from(*c));
         std::io::stdout().flush().unwrap();
 
         let mut line = String::new();
