@@ -34,4 +34,4 @@ jobs:
         run: cargo build --release
 
       - name: Run benchmarks
-        run: pipenv run python bench.py 100
+        run: pipenv run python bench.py 2315

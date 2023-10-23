@@ -1,3 +1,4 @@
+mod guess;
 mod response;
 mod word;
 
@@ -5,8 +6,10 @@ use clap::Parser;
 use indicatif::{ParallelProgressIterator, ProgressIterator};
 use rayon::prelude::*;
 use response::{Response, ResponseType};
-use std::{collections::HashSet, fmt::Display, process};
+use std::{borrow::Cow, collections::HashSet, fmt::Display, process};
 use word::{Letter, Word};
+
+use crate::guess::Guess;
 
 #[derive(Parser)]
 #[command(version)]
@@ -29,10 +32,11 @@ fn main() {
 
         let best_choice = if run == 1 {
             "crane".into()
+        } else if answers.len() < 2 {
+            answers.iter().next().unwrap().clone()
         } else {
-            (if answers.len() > 2 { &ok } else { &answers })
-                .par_iter()
-                .progress_count(ok.len() as u64)
+            ok.iter()
+                .progress()
                 .map(|w| (w, w.score_new(&answers, &run)))
                 .min_by_key(|x| x.1)
                 .expect("no words left")
@@ -49,10 +53,17 @@ fn main() {
             process::exit(0);
         }
 
+        let guess = Guess {
+            word: Cow::Borrowed(&best_choice),
+            mask: response,
+        };
+
         board.use_responses(response, &best_choice);
 
-        answers.retain(|w| board.word_is_ok(w.clone()));
-        ok.retain(|w| board.word_is_ok(w.clone()));
+        answers.retain(|w| guess.matches(w));
+        ok.retain(|w| guess.matches(w));
+
+        eprintln!("{} ok {} answers", ok.len(), answers.len());
     }
 
     panic!("damn i suck at coding");
@@ -92,7 +103,7 @@ impl Board {
     fn use_responses(&mut self, responses: Response, word: &Word) {
         for (i, r) in responses.iter().enumerate() {
             match r {
-                ResponseType::Grey => {
+                ResponseType::Gray => {
                     self.letters[i].remove_choice(word[i]);
                 }
                 ResponseType::Yellow => {

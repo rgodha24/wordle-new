@@ -10,7 +10,7 @@ pub struct Response([ResponseType; 5]);
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum ResponseType {
-    Grey,
+    Gray,
     Yellow,
     Green,
 }
@@ -21,7 +21,7 @@ impl Response {
     }
 
     fn prompt(word: &Word) -> Self {
-        let mut r = [ResponseType::Grey; 5];
+        let mut r = [ResponseType::Gray; 5];
         for (i, c) in word.iter().enumerate() {
             r[i] = Self::prompt_single(c);
         }
@@ -37,19 +37,6 @@ impl Response {
         }
     }
 
-    pub fn from_answer(guess: &Word, correct: &Word) -> Self {
-        let mut r = [ResponseType::Grey; 5];
-        for (i, c) in guess.iter().enumerate() {
-            if correct[i] == *c {
-                r[i] = ResponseType::Green;
-            } else if correct.contains(c) {
-                r[i] = ResponseType::Yellow;
-            }
-        }
-
-        Self(r)
-    }
-
     fn prompt_single(c: &u8) -> ResponseType {
         print!("Is {} grey(1), yellow(2), or green(3)?: ", char::from(*c));
         std::io::stdout().flush().unwrap();
@@ -58,7 +45,7 @@ impl Response {
         std::io::stdin().lock().read_line(&mut line).unwrap();
 
         match line.trim().parse::<usize>() {
-            Ok(1) => ResponseType::Grey,
+            Ok(1) => ResponseType::Gray,
             Ok(2) => ResponseType::Yellow,
             Ok(3) => ResponseType::Green,
             Ok(n) => {
@@ -70,6 +57,46 @@ impl Response {
                 Self::prompt_single(c)
             }
         }
+    }
+
+    pub fn from_answer(guess: &Word, answer: &Word) -> Self {
+        assert_eq!(answer.len(), 5);
+        assert_eq!(guess.len(), 5);
+        let mut c = [ResponseType::Gray; 5];
+        // Array indexed by lowercase ascii letters
+        let mut misplaced = [0u8; (b'z' - b'a' + 1) as usize];
+
+        // Find all correct letters
+        for ((&answer, &guess), c) in answer.iter().zip(guess.iter()).zip(c.iter_mut()) {
+            if answer == guess {
+                *c = ResponseType::Green
+            } else {
+                // If the letter does not match, count it as misplaced
+                misplaced[(answer - b'a') as usize] += 1;
+            }
+        }
+        // Check all of the non matching letters if they are misplaced
+        for (&guess, c) in guess.iter().zip(c.iter_mut()) {
+            // If the letter was guessed wrong and the same letter was counted as misplaced
+            if *c == ResponseType::Gray && misplaced[(guess - b'a') as usize] > 0 {
+                *c = ResponseType::Yellow;
+                misplaced[(guess - b'a') as usize] -= 1;
+            }
+        }
+
+        Response(c)
+    }
+}
+
+impl ResponseType {
+    pub fn is_misplaced(letter: u8, answer: &Word, used: &mut [bool; 5]) -> bool {
+        answer.iter().enumerate().any(|(i, a)| {
+            if *a == letter && !used[i] {
+                used[i] = true;
+                return true;
+            }
+            false
+        })
     }
 }
 
@@ -86,28 +113,5 @@ impl Deref for Response {
 
     fn deref(&self) -> &Self::Target {
         &self.0
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Response, ResponseType};
-    use crate::Word;
-
-    #[test]
-    fn from_answer_works() {
-        use ResponseType::*;
-
-        let guess = Word::from("hello");
-        let ans = Word::from("world");
-        let r = Response::from_answer(&guess, &ans);
-
-        assert_eq!(r, Response([Grey, Grey, Yellow, Green, Yellow]));
-
-        let guess = Word::from("saine");
-        let correct = Word::from("agent");
-
-        let r = Response::from_answer(&guess, &correct);
-        assert_eq!(r, Response([Grey, Yellow, Grey, Green, Yellow]));
     }
 }

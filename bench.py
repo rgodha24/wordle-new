@@ -1,36 +1,39 @@
+import asyncio
 import json
 import random
-import subprocess
 from os import path
 from sys import argv
 from typing import List
 
-from tqdm import tqdm
+from tqdm.asyncio import tqdm as async_tqdm
 
 BINARY = path.abspath("./target/release/wordle")
 
 
-def run_subprocess(answer):
+async def run_subprocess(answer):
     try:
         # Run subprocess and capture stdout
-        result = subprocess.run(
-            [BINARY, "--answer", answer],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            stdin=subprocess.PIPE,
-            text=True,
-            check=True,
+        process = await asyncio.create_subprocess_exec(
+            BINARY, "--answer", answer,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
 
-        lines_count = len(result.stdout.splitlines())
+        stdout, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            # Handle subprocess errors if needed
+            return 7
+
+        lines_count = len(stdout.decode().splitlines())
 
         return lines_count
-    except subprocess.CalledProcessError:
-        # Handle subprocess errors if needed
+    except Exception as e:
+        print(f"An error occurred: {e}")
         return 7
 
 
-def main():
+async def main():
     with open("./answers.json", "r") as f:
         answers: List[str] = json.loads(f.read())
 
@@ -43,15 +46,14 @@ def main():
         print("no amount passed in, defaulting to 100")
         amount = 100
 
+    tasks = [run_subprocess(answer) for answer in answers[:amount]]
     results = []
-    pbar = tqdm(total = amount)
-    for i in answers[:amount]:
-        pbar.write(f"running {i}")
-        results.append(run_subprocess(i))
-        pbar.update(1)
+    for f in async_tqdm(asyncio.as_completed(tasks), total=len(tasks)):
+        result = await f
+        results.append(result)
 
     print("average:", sum(results) / len(results))
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

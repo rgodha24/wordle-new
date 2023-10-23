@@ -1,5 +1,6 @@
-use crate::response::{Response, ResponseType};
+use crate::{guess::Guess, response::Response};
 use std::{
+    borrow::Cow,
     collections::HashSet,
     fmt::Display,
     ops::{Deref, Index},
@@ -12,54 +13,13 @@ pub struct Letter {
     is: HashSet<u8>,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-struct TestAnswer<'a> {
-    guess: &'a Word,
-    response: &'a Response,
-    answer: &'a Word,
-}
+fn test_answer(guess: &Word, answer: &Word, response: Response) -> bool {
+    let guess = Guess {
+        word: Cow::Borrowed(guess),
+        mask: response,
+    };
 
-impl<'a> From<(&'a Word, &'a Response, &'a Word)> for TestAnswer<'a> {
-    fn from((guess, response, answer): (&'a Word, &'a Response, &'a Word)) -> TestAnswer<'a> {
-        TestAnswer {
-            guess,
-            response,
-            answer,
-        }
-    }
-}
-
-fn test_answer(
-    TestAnswer {
-        guess,
-        response,
-        answer,
-    }: TestAnswer,
-) -> bool {
-    for (i, r) in response.iter().enumerate() {
-        match r {
-            ResponseType::Green => {
-                if answer[i] != guess[i] {
-                    return false;
-                }
-            }
-            ResponseType::Yellow => {
-                if answer[i] == guess[i] {
-                    return false;
-                } else if !answer.contains(&guess[i]) {
-                    return false;
-                }
-            }
-            ResponseType::Grey => {
-                if answer[i] == guess[i] {
-                    return false;
-                } else if answer.contains(&guess[i]) {
-                    return false;
-                }
-            }
-        };
-    }
-    return true;
+    guess.matches(answer)
 }
 
 impl Word {
@@ -70,7 +30,7 @@ impl Word {
             let response = Response::from_answer(self, answer);
             score += answers
                 .iter()
-                .filter(|ans| test_answer((self, &response, *ans).into()))
+                .filter(|ans| test_answer(self, *ans, response))
                 .count();
         }
 
