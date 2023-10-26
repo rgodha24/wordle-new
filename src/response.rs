@@ -88,6 +88,56 @@ impl Response {
     }
 }
 
+/// really returns a 7 bit u8
+impl From<Response> for u64 {
+    fn from(value: Response) -> Self {
+        value.iter().fold(0, |mut acc, r| {
+            acc *= 3;
+            acc + match r {
+                ResponseType::Gray => 0,
+                ResponseType::Yellow => 1,
+                ResponseType::Green => 2,
+            }
+        })
+    }
+}
+
+impl From<u8> for Response {
+    fn from(mut value: u8) -> Self {
+        let mut r = [ResponseType::Gray; 5];
+        for i in 0..5 {
+            r[4 - i] = match value % 3 {
+                0 => ResponseType::Gray,
+                1 => ResponseType::Yellow,
+                2 => ResponseType::Green,
+                _ => unreachable!(),
+            };
+            value /= 3;
+        }
+
+        Self(r)
+    }
+}
+
+#[test]
+fn test_response_conversion() {
+    use ResponseType::*;
+
+    let r = Response([Gray; 5]);
+    let n = Response::from(u64::from(r.clone()) as u8);
+    assert_eq!(r, n);
+
+    let r = Response([Gray, Green, Gray, Yellow, Green]);
+    let n = Response::from(u64::from(r.clone()) as u8);
+
+    assert_eq!(r, n);
+
+    let r = Response([Green, Green, Gray, Yellow, Gray]);
+    let n = Response::from(u64::from(r.clone()) as u8);
+
+    assert_eq!(r, n);
+}
+
 impl ResponseType {
     pub fn is_misplaced(letter: u8, answer: &Word, used: &mut [bool; 5]) -> bool {
         answer.iter().enumerate().any(|(i, a)| {

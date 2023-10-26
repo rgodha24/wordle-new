@@ -1,23 +1,36 @@
-use std::borrow::Cow;
-
 use crate::{
     response::{Response, ResponseType},
     word::Word,
 };
 
-pub struct Guess<'a> {
-    pub word: Cow<'a, Word>,
+pub struct Guess {
+    pub word: Word,
     pub mask: Response,
 }
 
-impl Guess<'_> {
+#[repr(transparent)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct CachedGuess(pub u64);
+
+impl From<(&Guess, &Word)> for CachedGuess {
+    fn from((g, w): (&Guess, &Word)) -> Self {
+        let mut cached: u64 = 0;
+        cached += u64::from(w);
+
+        cached += u64::from(&g.word) << 25;
+
+        cached += u64::from(g.mask) << 50;
+
+        Self(cached)
+    }
+}
+
+impl Guess {
     pub fn matches(&self, word: &Word) -> bool {
         // Check if the guess would be possible to observe when `word` is the correct answer.
         // This is equivalent to
         //     ResponseType::compute(word, &self.word) == self.mask
         // without _necessarily_ computing the full mask for the tested word
-        assert_eq!(word.len(), 5);
-        assert_eq!(self.word.len(), 5);
         let mut used = [false; 5];
 
         // Check Green letters

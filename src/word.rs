@@ -1,6 +1,5 @@
 use crate::{guess::Guess, response::Response};
 use std::{
-    borrow::Cow,
     collections::HashSet,
     fmt::Display,
     ops::{Deref, Index},
@@ -15,7 +14,7 @@ pub struct Letter {
 
 fn test_answer(guess: &Word, answer: &Word, response: Response) -> bool {
     let guess = Guess {
-        word: Cow::Borrowed(guess),
+        word: guess.clone(),
         mask: response,
     };
 
@@ -113,5 +112,51 @@ impl Display for Letter {
             s.push(c);
         }
         write!(f, "{}", s)
+    }
+}
+
+impl From<u64> for Word {
+    fn from(n: u64) -> Self {
+        let mut word = [0; 5];
+
+        // n is 7 padding, then 5 bits per letter, where 0 = b'a' and 25 = b'z'
+        for i in 0..5 {
+            let pow = 5 * (4 - i);
+
+            let letter = n >> pow & 0b11111;
+            word[i] = letter as u8 + b'a';
+        }
+        Self(word)
+    }
+}
+
+impl From<&Word> for u64 {
+    fn from(value: &Word) -> Self {
+        let mut n = 0;
+        for i in 0..5 {
+            let b = (value[i] - b'a') as u64 * (1 << (5 * (4 - i)));
+            n += b;
+        }
+        n
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Word;
+
+    #[test]
+    fn works() {
+        let w: Word = "abcde".into();
+        let n = u64::from(&w);
+
+        assert_eq!(
+            n,
+            4 + 3 * 32 + 2 * 32 * 32 + 1 * 32 * 32 * 32 + 0 * 32 * 32 * 32 * 32
+        );
+
+        let n: Word = n.into();
+
+        assert_eq!(w, n);
     }
 }

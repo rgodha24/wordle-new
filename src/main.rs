@@ -3,25 +3,35 @@ mod response;
 mod word;
 
 use clap::Parser;
-use indicatif::{ParallelProgressIterator, ProgressIterator};
+use indicatif::ParallelProgressIterator;
+use itertools::Itertools;
 use rayon::prelude::*;
-use response::{Response, ResponseType};
-use std::{borrow::Cow, collections::HashSet, fmt::Display, process};
-use word::{Letter, Word};
+use response::Response;
+use std::{collections::HashSet, process, };
+use word::Word;
 
-use crate::guess::Guess;
+use crate::guess::{CachedGuess, Guess};
 
 #[derive(Parser)]
 #[command(version)]
 struct Args {
     #[arg(short, long)]
     answer: Option<String>,
+
+    /// Generate the cbor file of all possible matches
+    /// NOTE: THIS FILE TAKES LIKE 10 MINS TO MAKE AND IS 253 MB
+    #[arg(short, long, default_value_t = false)]
+    cbor: bool,
 }
 
 fn main() {
     let args = Args::parse();
     let answer: Option<Word> = args.answer.map(|s| s.as_str().into());
-    let mut board = Board::default();
+
+    if args.cbor {
+        generate_matches();
+        return;
+    }
 
     let (mut answers, mut ok) = read_jsons();
 
@@ -31,12 +41,12 @@ fn main() {
         // let greens = board.greens();
 
         let best_choice = if run == 1 {
-            "crane".into()
+            "slate".into()
         } else if answers.len() < 2 {
             answers.iter().next().unwrap().clone()
         } else {
-            ok.iter()
-                .progress()
+            ok.par_iter()
+                .progress_count(ok.len() as u64)
                 .map(|w| (w, w.score_new(&answers, &run)))
                 .min_by_key(|x| x.1)
                 .expect("no words left")
@@ -54,11 +64,9 @@ fn main() {
         }
 
         let guess = Guess {
-            word: Cow::Borrowed(&best_choice),
+            word: best_choice,
             mask: response,
         };
-
-        board.use_responses(response, &best_choice);
 
         answers.retain(|w| guess.matches(w));
         ok.retain(|w| guess.matches(w));
@@ -83,55 +91,35 @@ fn read_jsons() -> (HashSet<Word>, HashSet<Word>) {
     (answers, ok)
 }
 
-#[derive(Debug, Clone)]
-struct Board {
-    letters: [Letter; 5],
-    must_have: HashSet<u8>,
-}
+#[allow(dead_code)]
+fn generate_matches() {
+    let (answers, ok) = read_jsons();
 
-impl Board {
-    fn word_is_ok(&self, word: Word) -> bool {
-        for (i, c) in word.iter().enumerate() {
-            if !self.letters[i].contains(c) {
-                return false;
-            }
-        }
-
-        self.must_have.is_subset(&word.iter().copied().collect())
-    }
-
-    fn use_responses(&mut self, responses: Response, word: &Word) {
-        for (i, r) in responses.iter().enumerate() {
-            match r {
-                ResponseType::Gray => {
-                    self.letters[i].remove_choice(word[i]);
-                }
-                ResponseType::Yellow => {
-                    self.letters[i].remove_choice(word[i]);
-                    self.must_have.insert(word[i]);
-                }
-                ResponseType::Green => {
-                    self.letters[i].set_choice(word[i]);
+    let matches: Vec<u64> = answers
+        .iter()
+        .cartesian_product((0..125).map(|n| Response::from(n)))
+        .par_bridge()
+        .progress_count(answers.len() as u64 * 125)
+        .map(|(a, m)| {
+            let mut nums = vec![];
+            let guess = Guess {
+                word: a.clone(),
+                mask: m,
+            };
+            for o in &ok {
+                if guess.matches(o) {
+                    nums.push(CachedGuess::from((&guess, o)).0);
                 }
             }
-        }
-    }
-}
 
-impl Default for Board {
-    fn default() -> Self {
-        Self {
-            letters: Default::default(),
-            must_have: Default::default(),
-        }
-    }
-}
+            nums
+        })
+        .flatten()
+        .collect();
 
-impl Display for Board {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for letter in self.letters.iter() {
-            write!(f, "{}\n", letter)?;
-        }
-        Ok(())
-    }
+    println!("matches: {}", matches.len());
+
+    let out_file = std::fs::File::create("matches.cbor").unwrap();
+
+    ciborium::into_writer(&matches, out_file).unwrap();
 }
