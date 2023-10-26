@@ -1,6 +1,7 @@
 use crate::{
     response::{Response, ResponseType},
     word::Word,
+    MATCHES,
 };
 
 pub struct Guess {
@@ -26,6 +27,14 @@ impl From<(&Guess, &Word)> for CachedGuess {
 }
 
 impl Guess {
+    pub fn matches_cached(&self, word: &Word) -> bool {
+        let cached: CachedGuess = (self, word).into();
+        MATCHES
+            .get()
+            .map(|m| m.contains(&cached.0))
+            .unwrap_or_else(|| self.matches(word))
+    }
+    /// should only be called in the generate_matches function
     pub fn matches(&self, word: &Word) -> bool {
         // Check if the guess would be possible to observe when `word` is the correct answer.
         // This is equivalent to

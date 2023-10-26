@@ -3,11 +3,11 @@ mod response;
 mod word;
 
 use clap::Parser;
-use indicatif::ParallelProgressIterator;
+use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use rayon::prelude::*;
 use response::Response;
-use std::{collections::HashSet, process, };
+use std::{cell::OnceCell, collections::HashSet, process};
 use word::Word;
 
 use crate::guess::{CachedGuess, Guess};
@@ -21,26 +21,40 @@ struct Args {
     /// Generate the cbor file of all possible matches
     /// NOTE: THIS FILE TAKES LIKE 10 MINS TO MAKE AND IS 253 MB
     #[arg(short, long, default_value_t = false)]
-    cbor: bool,
+    gen_cbor: bool,
+
+    /// Use the cbor file of all possible matches
+    /// NOTE: this is slower
+    #[arg(short, long, default_value_t = false)]
+    use_cached_matches: bool,
+
+    /// calculate the best word to guess instead of using `slate`
+    #[arg(short, long, default_value_t = false)]
+    use_best_word: bool,
 }
+
+const MATCHES: OnceCell<HashSet<u64>> = OnceCell::new();
 
 fn main() {
     let args = Args::parse();
     let answer: Option<Word> = args.answer.map(|s| s.as_str().into());
 
-    if args.cbor {
+    if args.gen_cbor {
         generate_matches();
         return;
     }
 
     let (mut answers, mut ok) = read_jsons();
+    if args.use_cached_matches {
+        read_matches();
+    }
 
     // not 0 index...
     for run in 1..10 {
         // let best_chars = best_chars(&answers);
         // let greens = board.greens();
 
-        let best_choice = if run == 1 {
+        let best_choice = if run == 1 && !args.use_best_word {
             "slate".into()
         } else if answers.len() < 2 {
             answers.iter().next().unwrap().clone()
@@ -68,8 +82,8 @@ fn main() {
             mask: response,
         };
 
-        answers.retain(|w| guess.matches(w));
-        ok.retain(|w| guess.matches(w));
+        answers.retain(|w| guess.matches_cached(w));
+        ok.retain(|w| guess.matches_cached(w));
 
         eprintln!("{} ok {} answers", ok.len(), answers.len());
     }
@@ -89,6 +103,20 @@ fn read_jsons() -> (HashSet<Word>, HashSet<Word>) {
     ok.extend(answers.iter().cloned());
 
     (answers, ok)
+}
+
+fn read_matches() {
+    let file = std::fs::File::open("matches.cbor").unwrap();
+
+    let pb = ProgressBar::new(file.metadata().unwrap().len());
+
+    pb.set_style(
+        ProgressStyle::with_template("{wide_bar} {bytes}/{total_bytes} {eta} {elapsed}").unwrap(),
+    );
+
+    MATCHES
+        .set(ciborium::from_reader(pb.wrap_read(file)).unwrap())
+        .unwrap();
 }
 
 #[allow(dead_code)]

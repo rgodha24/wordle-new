@@ -18,7 +18,7 @@ fn test_answer(guess: &Word, answer: &Word, response: Response) -> bool {
         mask: response,
     };
 
-    guess.matches(answer)
+    guess.matches_cached(answer)
 }
 
 impl Word {
