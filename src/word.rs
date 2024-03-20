@@ -29,7 +29,7 @@ impl Word {
             let response = Response::from_answer(self, answer);
             score += answers
                 .iter()
-                .filter(|ans| test_answer(self, *ans, response))
+                .filter(|ans| test_answer(self, ans, response))
                 .count();
         }
 
@@ -150,10 +150,7 @@ mod tests {
         let w: Word = "abcde".into();
         let n = u64::from(&w);
 
-        assert_eq!(
-            n,
-            4 + 3 * 32 + 2 * 32 * 32 + 1 * 32 * 32 * 32 + 0 * 32 * 32 * 32 * 32
-        );
+        assert_eq!(n, 4 + 3 * 32 + 2 * 32 * 32 + 32 * 32 * 32);
 
         let n: Word = n.into();
 

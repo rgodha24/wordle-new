@@ -31,6 +31,9 @@ struct Args {
     /// calculate the best word to guess instead of using `slate`
     #[arg(short, long, default_value_t = false)]
     use_best_word: bool,
+
+    #[arg(long, default_value=None)]
+    starting_word: Option<String>,
 }
 
 const MATCHES: OnceCell<HashSet<u64>> = OnceCell::new();
@@ -49,13 +52,24 @@ fn main() {
         read_matches();
     }
 
+    let starting_word: Word = match args.starting_word {
+        Some(s) if s.len() == 5 => s.as_str().into(),
+        Some(_) => {
+            eprintln!("starting word must be 5 chars long");
+            "saine".into()
+        }
+        None => "saine".into(),
+    };
+
     // not 0 index...
     for run in 1..10 {
+        eprintln!("{} ok {} answers", ok.len(), answers.len());
+
         // let best_chars = best_chars(&answers);
         // let greens = board.greens();
 
         let best_choice = if run == 1 && !args.use_best_word {
-            "slate".into()
+            starting_word.clone()
         } else if answers.len() < 2 {
             answers.iter().next().unwrap().clone()
         } else {
@@ -84,8 +98,6 @@ fn main() {
 
         answers.retain(|w| guess.matches_cached(w));
         ok.retain(|w| guess.matches_cached(w));
-
-        eprintln!("{} ok {} answers", ok.len(), answers.len());
     }
 
     panic!("damn i suck at coding");
@@ -94,8 +106,8 @@ fn main() {
 fn read_jsons() -> (HashSet<Word>, HashSet<Word>) {
     let ok = include_str!("../ok.json");
     let answers = include_str!("../answers.json");
-    let ok: HashSet<&str> = serde_json::from_str(&ok).unwrap();
-    let answers: HashSet<&str> = serde_json::from_str(&answers).unwrap();
+    let ok: HashSet<&str> = serde_json::from_str(ok).unwrap();
+    let answers: HashSet<&str> = serde_json::from_str(answers).unwrap();
 
     let answers: HashSet<Word> = answers.into_iter().map(|w| w.into()).collect();
     let mut ok: HashSet<Word> = ok.into_iter().map(|w| w.into()).collect();
@@ -125,7 +137,7 @@ fn generate_matches() {
 
     let matches: Vec<u64> = answers
         .iter()
-        .cartesian_product((0..125).map(|n| Response::from(n)))
+        .cartesian_product((0..125).map(Response::from))
         .par_bridge()
         .progress_count(answers.len() as u64 * 125)
         .map(|(a, m)| {

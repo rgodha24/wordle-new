@@ -124,16 +124,16 @@ fn test_response_conversion() {
     use ResponseType::*;
 
     let r = Response([Gray; 5]);
-    let n = Response::from(u64::from(r.clone()) as u8);
+    let n = Response::from(u64::from(r) as u8);
     assert_eq!(r, n);
 
     let r = Response([Gray, Green, Gray, Yellow, Green]);
-    let n = Response::from(u64::from(r.clone()) as u8);
+    let n = Response::from(u64::from(r) as u8);
 
     assert_eq!(r, n);
 
     let r = Response([Green, Green, Gray, Yellow, Gray]);
-    let n = Response::from(u64::from(r.clone()) as u8);
+    let n = Response::from(u64::from(r) as u8);
 
     assert_eq!(r, n);
 }
