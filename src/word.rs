@@ -1,11 +1,11 @@
 use crate::{guess::Guess, response::Response};
 use std::{
-    collections::HashSet,
+    collections::{HashSet, BTreeSet},
     fmt::Display,
     ops::{Deref, Index},
 };
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Word([u8; 5]);
 #[derive(Debug, Clone)]
 pub struct Letter {
@@ -23,7 +23,7 @@ fn test_answer(guess: &Word, answer: &Word, response: Response) -> bool {
 
 impl Word {
     /// lower is better
-    pub fn score_new(&self, answers: &HashSet<Word>, run_number: &usize) -> usize {
+    pub fn score_new(&self, answers: &BTreeSet<Word>, run_number: &usize) -> usize {
         let mut score = 0;
         for answer in answers {
             let response = Response::from_answer(self, answer);
@@ -38,15 +38,6 @@ impl Word {
         }
 
         score
-    }
-}
-
-impl Letter {
-    pub fn remove_choice(&mut self, c: u8) -> bool {
-        self.is.remove(&c)
-    }
-    pub fn set_choice(&mut self, c: u8) {
-        self.is = [c].into_iter().collect();
     }
 }
 

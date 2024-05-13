@@ -7,7 +7,7 @@ use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use rayon::prelude::*;
 use response::Response;
-use std::{cell::OnceCell, collections::HashSet, process};
+use std::{cell::OnceCell, collections::BTreeSet, process};
 use word::Word;
 
 use crate::guess::{CachedGuess, Guess};
@@ -36,7 +36,7 @@ struct Args {
     starting_word: Option<String>,
 }
 
-const MATCHES: OnceCell<HashSet<u64>> = OnceCell::new();
+const MATCHES: OnceCell<BTreeSet<u64>> = OnceCell::new();
 
 fn main() {
     let args = Args::parse();
@@ -71,6 +71,7 @@ fn main() {
         let best_choice = if run == 1 && !args.use_best_word {
             starting_word.clone()
         } else if answers.len() < 2 {
+            println!("here");
             answers.iter().next().unwrap().clone()
         } else {
             ok.par_iter()
@@ -103,14 +104,14 @@ fn main() {
     panic!("damn i suck at coding");
 }
 
-fn read_jsons() -> (HashSet<Word>, HashSet<Word>) {
+fn read_jsons() -> (BTreeSet<Word>, BTreeSet<Word>) {
     let ok = include_str!("../ok.json");
     let answers = include_str!("../answers.json");
-    let ok: HashSet<&str> = serde_json::from_str(ok).unwrap();
-    let answers: HashSet<&str> = serde_json::from_str(answers).unwrap();
+    let ok: BTreeSet<&str> = serde_json::from_str(ok).unwrap();
+    let answers: BTreeSet<&str> = serde_json::from_str(answers).unwrap();
 
-    let answers: HashSet<Word> = answers.into_iter().map(|w| w.into()).collect();
-    let mut ok: HashSet<Word> = ok.into_iter().map(|w| w.into()).collect();
+    let answers: BTreeSet<Word> = answers.into_iter().map(|w| w.into()).collect();
+    let mut ok: BTreeSet<Word> = ok.into_iter().map(|w| w.into()).collect();
 
     ok.extend(answers.iter().cloned());
 
